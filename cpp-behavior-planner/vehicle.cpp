@@ -11,16 +11,62 @@
  */
 Vehicle::Vehicle(int lane, int s, int v, int a) {
 
-    this->lane = lane;
-    this->s = s;
-    this->v = v;
-    this->a = a;
-    state = "CS";
+    this->lane = lane;      // Lane #
+    this->s = s;            // s, distance along the road (Frenet's coords)
+    this->v = v;            // v, velocity
+    this->a = a;            // a, acceleration
+    state = "CS";           // "Current Speed", possibly??
     max_acceleration = -1;
 
 }
 
 Vehicle::~Vehicle() {}
+
+// --- Implement Finite State Machine -- 
+// Get Next Valid States
+// Returns a list of valid states, for any state
+vector<string> Vehicle::next_valid_states() {
+
+  vector<string> next_states;  // our return value
+
+  if (state.compare("KL") == 0) {   // from Keep Lane, can do Perform Lane Change Right/Left only
+    next_states.push_back("KL");
+    next_states.push_back("PLCL");
+    next_states.push_back("PLCR");
+  } 
+  else if (state.compare("PLCL") == 0) { // from Perform Lane Change Left --> KL, LCL, PLCL
+    next_states.push_back("KL");
+    next_states.push_back("PLCL");
+    next_states.push_back("LCL");
+  }
+  else if (state.compare("PLCR") == 0) { // from Perform Lane Change Right --> KL, LCR, PLCR
+    next_states.push_back("KL");
+    next_states.push_back("PLCR");
+    next_states.push_back("LCR");
+  }
+  else if (state.compare("LCR") == 0) { // from Lane Change Right --> Keep Lane
+    next_states.push_back("KL");
+  }
+  else if (state.compare("LCL") == 0) { // from Lane Change Left --> Keep Lane
+    next_states.push_back("KL");
+  }
+
+  // remove edge cases
+  if (this->lane == 0) {                // cannot move Right from right-most lane
+    next_states.erase(std::remove(next_states.begin(), 
+                                  next_states.end(),
+                                  "PLCR"),
+                      next_states.end());
+  }
+  if (this->lane == 3) {              // cannot move left from left-most lane
+    next_states.erase(std::remove(next_states.begin(), 
+                                  next_states.end(),
+                                  "PLCL"),
+                      next_states.end());
+  }
+
+  return next_states;
+}
 
 // NOTE: TODO: - Implement this method.
 void Vehicle::update_state(map<int,vector < vector<int> > > predictions) {
@@ -57,28 +103,167 @@ void Vehicle::update_state(map<int,vector < vector<int> > > predictions) {
     }
 
     */
-    state = "KL"; // this is an example of how you change state.
+  
+    // Define Cost Functions - as Lambdas
+    // 1 - Keep Lane Cost: cost = 0 if we are in the goal lane; else difference b/w current lane & goal lane
+    auto keep_lane_cost = [this]() {
+      auto c = 1.0 * (lane - goal_lane);
+      return c * c; // bcos we want a positive cost
+    };
 
+    // 2 -- Perform Lane Change Cost
+    auto perform_lane_change_cost = [this](int delta_lane) {
+      // delta_lane is either +1 or -1, depending on L or R 
+      double c = (lane + 0.9 * delta_lane - goal_lane);  // FIXME: try changing the factor
+      cout << " c: " << c << ", lane: " << lane << ", delta_lane: " << delta_lane << endl;
+      return c * c; 
+    };
 
-}
+    // 3 -- Change Lane Cost 
+    // Take predictions / collisions into account
+    auto change_lane_cost = [this](int delta_lane, const map<int, vector<vector<int> > >& predictions) {
 
+      bool collision = false;
+      // see if there are any collisions, if so, add a HUGE cost
+      for (auto it = predictions.begin(); it != predictions.end(); it++) {
+          int now = 0;
+          int vid = it->first;  // vehicle id
+          vector<vector<int> > v = it->second;
+
+          if (vid != -1 ) { // ego_key, which is our car
+              collision = (abs(lane - v[now][0]) == 1) && (abs(s - v[now][1]) <= L);
+              if (collision) {
+                  return 100000.0;  // HUGE PENALTY for collision
+              }
+          }
+      }
+
+      auto cst = 1.0 * (lane + delta_lane - goal_lane);
+      return cst * cst;
+    };
+
+    // get next valid states
+    vector<string> valid_states = next_valid_states();
+
+    // store the potential costs
+    map<string, double> costs;
+
+    // calc the costs for each state change
+    costs["KL"]   = keep_lane_cost();
+    costs["PLCL"] = perform_lane_change_cost(1);  // delta is +1
+    costs["PLCR"] = perform_lane_change_cost(-1); // delta is -1
+    costs["LCL"]  = change_lane_cost(1, predictions); 
+    costs["LCR"]  = change_lane_cost(-1, predictions);
+
+    // TODO: Add Cost for going SLOW / FAST !!
+
+    // find the state with min cost
+    double max_cost = 1E12;
+
+    // got thru each valid state and find the one with min cost
+    for (auto test_state: valid_states) {
+        double test_cost = costs[test_state];
+
+        cout << " checking next state: " << test_state << ", cost: " << test_cost << endl;
+        if (test_cost < max_cost) {
+            max_cost = test_cost;
+            state    = test_state;
+
+            cout << " --> NEXT state: " << state << " <-- " << endl;
+        }
+    }
+
+    // DONE -- 
+
+  /* -- REMOVED !! ---
+    vector<string> states = {"KL", "LCL", "LCR", "PLCL", "PLCR" };
+    vector<double> costs;   // to be calculated for each cost func
+    double         cost;
+
+    for (string test_state: states) {
+      cost = 0;
+
+      // make a copy of our vehicle, and test predictions on the test state
+      Vehicle test_v = Vehicle(this->lane, this->s, this->v, this->a);
+      test_v.state  = test_state;
+      test_v.realize_state(predictions);
+
+      // predict one step into future for selected state
+      vector<int> test_future_state = test_v.state_at(1);
+      int pred_lane     = test_future_state[1];
+      int pred_s        = test_future_state[2];
+      int pred_v        = test_future_state[3];
+      int pred_a        = test_future_state[4];
+
+      cout << " tested state: " << test_state << endl;
+
+      // check for collisions
+      map<int, vector<vector<int> > >::iterator it = predictions.begin();
+      vector<vector<vector<int> > >   in_front;
+      while(it != predictions.end()) {
+        int index             = it->first;
+        vector<vector<int>> v = it->second;
+
+        // check predictions one step in future
+        if (( v[1][0] == pred_lane) && (abs(v[1][1] - pred_s) <= L) && index != -1) {
+          // about to have a collision!
+          cout  << "!! Collision with car: " << index << ", "
+                << v[1][0] << " " << pred_lane << ", "
+                << v[1][1] << " " << pred_s << endl;
+          cost += 1000;  // Cost of Collision
+        }
+        it++;
+      }
+
+      // COST FUNCTIONS -- Add all other Costs
+      cost += 1.0 * (10 - pred_v);  // Speed limit - current velocity
+      cost += 1.0 * (pow(3 - pred_lane, 2));
+      cost += 10 * (1 - exp(-abs(pred_lane - 3) / (300 - (double)pred_s)));
+      if (pred_lane < 0 || pred_lane > 3) {   // illegal lane (HARDCODED LANE NUMBERS !!)
+        cost += 1000;   // high cost
+      }
+
+      cout << " Cost:  " << cost << endl;
+      costs.push_back(cost); // store it
+    } // for each state
+
+    // Now find the minimum cost from above
+    double min_cost = 1e9;
+    int min_cost_index = 0;
+
+    for (int i = 0; i < costs.size(); i++) {
+      // find lowest cost index
+      if (costs[i] < min_cost) {
+        min_cost = costs[i];
+        min_cost_index = i;
+      }
+    }
+
+    // set the state to that with min_cost_index
+    cout << " selected state: " << state << endl;
+    state = states[min_cost_index];    // 
+  ** --- REMOVED TILL HERE --- */
+  
+} // end update_state
+
+// --- Configure the Ego vehicle with Goal info ---
 void Vehicle::configure(vector<int> road_data) {
 	/*
     Called by simulator before simulation begins. Sets various
     parameters which will impact the ego vehicle. 
     */
-    target_speed = road_data[0];
-    lanes_available = road_data[1];
-    max_acceleration = road_data[2];
-    goal_lane = road_data[3];
-    goal_s = road_data[4];
+    target_speed      = road_data[0];   // SPEED LIMIT
+    lanes_available   = road_data[1];   // NUM OF LANES 
+    goal_s            = road_data[2];   // GOAL_s,      NOTE: Fixed this (was incorrect)
+    goal_lane         = road_data[3];   // GOAL_Lane
+    max_acceleration  = road_data[4];   // a, NOTE: fixed this (was incorrectly assigned to goal_s)
 }
 
 string Vehicle::display() {
 
 	ostringstream oss;
 	
-	oss << "s:    " << this->s << "\n";
+	  oss << "s:    " << this->s << "\n";
     oss << "lane: " << this->lane << "\n";
     oss << "v:    " << this->v << "\n";
     oss << "a:    " << this->a << "\n";
@@ -86,12 +271,14 @@ string Vehicle::display() {
     return oss.str();
 }
 
+// --- Run time step for given state ---
 void Vehicle::increment(int dt = 1) {
 
 	this->s += this->v * dt;
-    this->v += this->a * dt;
+  this->v += this->a * dt;
 }
 
+// --- Predict Vehicle State at given time t ---
 vector<int> Vehicle::state_at(int t) {
 
 	/*
@@ -102,6 +289,7 @@ vector<int> Vehicle::state_at(int t) {
     return {this->lane, s, v, this->a};
 }
 
+// --- Check if Collision Occurs with another Vehicle ---
 bool Vehicle::collides_with(Vehicle other, int at_time) {
 
 	/*
@@ -112,6 +300,7 @@ bool Vehicle::collides_with(Vehicle other, int at_time) {
     return (check1[0] == check2[0]) && (abs(check1[1]-check2[1]) <= L);
 }
 
+// --- Will Collide With Other Vehicle ---
 Vehicle::collider Vehicle::will_collide_with(Vehicle other, int timesteps) {
 
 	Vehicle::collider collider_temp;
@@ -131,6 +320,7 @@ Vehicle::collider Vehicle::will_collide_with(Vehicle other, int timesteps) {
 	return collider_temp;
 }
 
+// --- Execute: Change to a given state, given its predictions ---
 void Vehicle::realize_state(map<int,vector < vector<int> > > predictions) {
    
 	/*
@@ -169,6 +359,7 @@ void Vehicle::realize_constant_speed() {
 	a = 0;
 }
 
+// --- Internal --- Max Acceleration for Lane
 int Vehicle::_max_accel_for_lane(map<int,vector<vector<int> > > predictions, int lane, int s) {
 
 	int delta_v_til_target = target_speed - v;
@@ -215,10 +406,12 @@ int Vehicle::_max_accel_for_lane(map<int,vector<vector<int> > > predictions, int
 
 }
 
+// ---- Execute -- Keep Lane ----
 void Vehicle::realize_keep_lane(map<int,vector< vector<int> > > predictions) {
 	this->a = _max_accel_for_lane(predictions, this->lane, this->s);
 }
 
+// ----- Execute Lane Change -----
 void Vehicle::realize_lane_change(map<int,vector< vector<int> > > predictions, string direction) {
 	int delta = -1;
     if (direction.compare("L") == 0)
@@ -231,6 +424,7 @@ void Vehicle::realize_lane_change(map<int,vector< vector<int> > > predictions, s
     this->a = _max_accel_for_lane(predictions, lane, s);
 }
 
+// ------- Execute - Prepare for Lane Change ------
 void Vehicle::realize_prep_lane_change(map<int,vector<vector<int> > > predictions, string direction) {
 	int delta = -1;
     if (direction.compare("L") == 0)
@@ -302,6 +496,7 @@ void Vehicle::realize_prep_lane_change(map<int,vector<vector<int> > > prediction
 
 }
 
+// --- Generate Predictions for vehicle, over horizon number of time steps ---
 vector<vector<int> > Vehicle::generate_predictions(int horizon = 10) {
 
 	vector<vector<int> > predictions;

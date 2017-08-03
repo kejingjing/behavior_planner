@@ -84,6 +84,9 @@ public:
 
   vector<vector<int> > generate_predictions(int horizon);
 
+  // Added - for Finite State Machine - to get Next Valid States
+  vector<string> next_valid_states();
+
 };
 
 #endif
