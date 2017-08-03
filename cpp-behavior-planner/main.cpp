@@ -8,23 +8,23 @@
 using namespace std;
 
 //impacts default behavior for most states
-int SPEED_LIMIT = 10;
+int SPEED_LIMIT           = 10;
 
 //all traffic in lane (besides ego) follow these speeds
-vector<int> LANE_SPEEDS = {6,7,8,9}; 
+vector<int> LANE_SPEEDS   = {6,7,8,9}; 
 
 //Number of available "cells" which should have traffic
-double TRAFFIC_DENSITY   = 0.15;
+double TRAFFIC_DENSITY    = 0.15;
 
 // At each timestep, ego can set acceleration to value between 
 // -MAX_ACCEL and MAX_ACCEL
-int MAX_ACCEL = 2;
+int MAX_ACCEL             = 2;
 
 // s value and lane number of goal.
-vector<int> GOAL = {300, 0};
+vector<int> GOAL          = {300, 0};
 
 // These affect the visualization
-int FRAMES_PER_SECOND = 4;
+int FRAMES_PER_SECOND     = 4;
 int AMOUNT_OF_ROAD_VISIBLE = 40;
 
 int main() {
@@ -41,9 +41,15 @@ int main() {
 	//configuration data: speed limit, num_lanes, goal_s, goal_lane, max_acceleration
 
 	int num_lanes = LANE_SPEEDS.size();
-	vector<int> ego_config = {SPEED_LIMIT,num_lanes,goal_s,goal_lane,MAX_ACCEL};
+
+  // This is the Road Data
+	vector<int> ego_config = {SPEED_LIMIT,
+                            num_lanes,
+                            goal_s,
+                            goal_lane,
+                            MAX_ACCEL};
 	 
-	road.add_ego(2,0, ego_config);
+	road.add_ego(2,0, ego_config);  // lane_number, s, ego_config
 	int timestep = 0;
 	
 	while (road.get_ego().s <= GOAL[0]) {
@@ -56,8 +62,10 @@ int main() {
 		road.display(timestep);
 		//time.sleep(float(1.0) / FRAMES_PER_SECOND);
 	}
-  
+
 	Vehicle ego = road.get_ego();
+  // Debug
+  cout << "\n--> GOAL: (s, i.e. distance) " << GOAL[0] << ", (lane index) " << GOAL[1] << endl;
 	if (ego.lane == GOAL[1])
 	{
 		cout << "You got to the goal in " << timestep << " seconds!" << endl;

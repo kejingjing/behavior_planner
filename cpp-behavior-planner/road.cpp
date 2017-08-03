@@ -56,6 +56,7 @@ void Road::populate_traffic() {
 	
 }
 
+// --- Advance -- advance the road ---
 void Road::advance() {
 	
 	map<int ,vector<vector<int> > > predictions;
@@ -72,7 +73,7 @@ void Road::advance() {
 	while(it != this->vehicles.end())
     {
     	int v_id = it->first;
-        if(v_id == ego_key)
+        if(v_id == ego_key)   // If it is the Ego car (our vehicle), update it's state
         {
         	it->second.update_state(predictions);
         	it->second.realize_state(predictions);
@@ -84,6 +85,7 @@ void Road::advance() {
     
 }
 
+// -------- Display --------------
 void Road::display(int timestep) {
 
 	Vehicle ego = this->vehicles.find(this->ego_key)->second;
@@ -174,28 +176,37 @@ void Road::display(int timestep) {
 
 }
 
+/* --------- Add Ego ------------------
+   Add EGO Config data to Vehicle in specified lane_num, s
+*/
 void Road::add_ego(int lane_num, int s, vector<int> config_data) {
 	
 	map<int, Vehicle>::iterator it = this->vehicles.begin();
     while(it != this->vehicles.end())
     {
-    	int v_id = it->first;
+    	  int v_id = it->first;
         Vehicle v = it->second;
+        // delete the vehicle v specified by the given lane_num, s
         if(v.lane == lane_num && v.s == s)
         {
         	this->vehicles.erase(v_id);
         }
         it++;
     }
+    // Create a new Vehicle with given lane_num, s
     Vehicle ego = Vehicle(lane_num, s, this->lane_speeds[lane_num], 0);
+    // ... configure it
     ego.configure(config_data);
-    ego.state = "KL";
+    ego.state = "KL"; // KEEP LANE
+    // ... add it to our list of vehicles
     this->vehicles.insert(std::pair<int,Vehicle>(ego_key,ego));
     
 }
 
+/* ---- CULL -----
+
+*/
 void Road::cull() {
-	
 	
 	Vehicle ego = this->vehicles.find(this->ego_key)->second;
 	int center_s = ego.s;
@@ -249,5 +260,4 @@ void Road::cull() {
     	it++;
     }
     
-
 }

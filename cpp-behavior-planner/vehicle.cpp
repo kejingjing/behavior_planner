@@ -36,12 +36,12 @@ vector<string> Vehicle::next_valid_states() {
   } 
   else if (state.compare("PLCL") == 0) { // from Perform Lane Change Left --> KL, LCL, PLCL
     next_states.push_back("KL");
-    next_states.push_back("PLCL");
+    // next_states.push_back("PLCL");
     next_states.push_back("LCL");
   }
   else if (state.compare("PLCR") == 0) { // from Perform Lane Change Right --> KL, LCR, PLCR
     next_states.push_back("KL");
-    next_states.push_back("PLCR");
+    // next_states.push_back("PLCR");
     next_states.push_back("LCR");
   }
   else if (state.compare("LCR") == 0) { // from Lane Change Right --> Keep Lane
@@ -114,8 +114,8 @@ void Vehicle::update_state(map<int,vector < vector<int> > > predictions) {
     // 2 -- Perform Lane Change Cost
     auto perform_lane_change_cost = [this](int delta_lane) {
       // delta_lane is either +1 or -1, depending on L or R 
-      double c = (lane + 0.9 * delta_lane - goal_lane);  // FIXME: try changing the factor
-      cout << " c: " << c << ", lane: " << lane << ", delta_lane: " << delta_lane << endl;
+      double c = (lane + 0.5 * delta_lane - goal_lane);  // FIXME: try changing the factor
+      cout << " c: " << c * c << ", lane: " << lane << ", delta_lane: " << delta_lane << endl;
       return c * c; 
     };
 
@@ -142,6 +142,12 @@ void Vehicle::update_state(map<int,vector < vector<int> > > predictions) {
       return cst * cst;
     };
 
+    // 4 - Cost of Speed
+    auto speed_cost = [this]() {
+       auto cst =  0.5 * (target_speed - v); 
+       return cst * cst;
+    };
+
     // get next valid states
     vector<string> valid_states = next_valid_states();
 
@@ -149,11 +155,11 @@ void Vehicle::update_state(map<int,vector < vector<int> > > predictions) {
     map<string, double> costs;
 
     // calc the costs for each state change
-    costs["KL"]   = keep_lane_cost();
-    costs["PLCL"] = perform_lane_change_cost(1);  // delta is +1
-    costs["PLCR"] = perform_lane_change_cost(-1); // delta is -1
-    costs["LCL"]  = change_lane_cost(1, predictions); 
-    costs["LCR"]  = change_lane_cost(-1, predictions);
+    costs["KL"]   = keep_lane_cost() + speed_cost();
+    costs["PLCL"] = perform_lane_change_cost(1); //  + speed_cost();  // delta is +1
+    costs["PLCR"] = perform_lane_change_cost(-1); //  + speed_cost(); // delta is -1
+    costs["LCL"]  = change_lane_cost(1, predictions); // + speed_cost(); 
+    costs["LCR"]  = change_lane_cost(-1, predictions); //   + speed_cost();
 
     // TODO: Add Cost for going SLOW / FAST !!
 
@@ -173,77 +179,7 @@ void Vehicle::update_state(map<int,vector < vector<int> > > predictions) {
         }
     }
 
-    // DONE -- 
-
-  /* -- REMOVED !! ---
-    vector<string> states = {"KL", "LCL", "LCR", "PLCL", "PLCR" };
-    vector<double> costs;   // to be calculated for each cost func
-    double         cost;
-
-    for (string test_state: states) {
-      cost = 0;
-
-      // make a copy of our vehicle, and test predictions on the test state
-      Vehicle test_v = Vehicle(this->lane, this->s, this->v, this->a);
-      test_v.state  = test_state;
-      test_v.realize_state(predictions);
-
-      // predict one step into future for selected state
-      vector<int> test_future_state = test_v.state_at(1);
-      int pred_lane     = test_future_state[1];
-      int pred_s        = test_future_state[2];
-      int pred_v        = test_future_state[3];
-      int pred_a        = test_future_state[4];
-
-      cout << " tested state: " << test_state << endl;
-
-      // check for collisions
-      map<int, vector<vector<int> > >::iterator it = predictions.begin();
-      vector<vector<vector<int> > >   in_front;
-      while(it != predictions.end()) {
-        int index             = it->first;
-        vector<vector<int>> v = it->second;
-
-        // check predictions one step in future
-        if (( v[1][0] == pred_lane) && (abs(v[1][1] - pred_s) <= L) && index != -1) {
-          // about to have a collision!
-          cout  << "!! Collision with car: " << index << ", "
-                << v[1][0] << " " << pred_lane << ", "
-                << v[1][1] << " " << pred_s << endl;
-          cost += 1000;  // Cost of Collision
-        }
-        it++;
-      }
-
-      // COST FUNCTIONS -- Add all other Costs
-      cost += 1.0 * (10 - pred_v);  // Speed limit - current velocity
-      cost += 1.0 * (pow(3 - pred_lane, 2));
-      cost += 10 * (1 - exp(-abs(pred_lane - 3) / (300 - (double)pred_s)));
-      if (pred_lane < 0 || pred_lane > 3) {   // illegal lane (HARDCODED LANE NUMBERS !!)
-        cost += 1000;   // high cost
-      }
-
-      cout << " Cost:  " << cost << endl;
-      costs.push_back(cost); // store it
-    } // for each state
-
-    // Now find the minimum cost from above
-    double min_cost = 1e9;
-    int min_cost_index = 0;
-
-    for (int i = 0; i < costs.size(); i++) {
-      // find lowest cost index
-      if (costs[i] < min_cost) {
-        min_cost = costs[i];
-        min_cost_index = i;
-      }
-    }
-
-    // set the state to that with min_cost_index
-    cout << " selected state: " << state << endl;
-    state = states[min_cost_index];    // 
-  ** --- REMOVED TILL HERE --- */
-  
+    // DONE --   
 } // end update_state
 
 // --- Configure the Ego vehicle with Goal info ---

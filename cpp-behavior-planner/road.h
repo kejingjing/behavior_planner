@@ -31,7 +31,8 @@ public:
 
     int camera_center;
 
-    map<int, Vehicle> vehicles;
+    // Map of Vehicle_ID to Vehicle, currently on the road
+    map<int, Vehicle> vehicles; 
 
     int vehicles_added = 0;
 
